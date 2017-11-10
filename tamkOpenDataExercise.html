@@ -298,7 +298,7 @@ curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building/8
 
             }
             eventId-- // adjust to be the last id and the list size size
-            console.log('buildEventList() - eventList:', eventList, eventId, eventList.length)
+            console.log('***** buildEventList() --->>> eventList:', eventList, eventId, eventList.length)
             return eventId
         }
 
@@ -312,9 +312,17 @@ curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building/8
             // console.log(buildRangeQueryByBuilding());
             let room = (currentRoomName == undefined) ? "C4-12" : currentRoomName
             let building = (currentBuildingName == undefined) ? "C-talo" : currentBuildingName
+            let view = $('#calendar').fullCalendar('getView').start
+            let isoDateString = new Date(view._i).toISOString().split('.')[0]
+            startDate = isoDateString
+            view = $('#calendar').fullCalendar('getView').end
+            isoDateString = new Date(view._i).toISOString().split('.')[0]
+            endDate = isoDateString
+
             $("#content").text("Cliks...")
             getRawReservations(URL, 
-                            buildRangeQueryByBuilding("2017-11-06T08:00", "2017-11-11T17:00", building, room),
+            //                buildRangeQueryByBuilding("2017-11-06T08:00", "2017-11-11T17:00", building, room),
+                            buildRangeQueryByBuilding(`${startDate}`, `${endDate}`, building, room),
                             showReservationsClick)
 
             console.log('*** getReservationClick() --->>> URL:', URL)                            
@@ -341,9 +349,17 @@ curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building/8
         function renderClick() {
             console.log('*** renderClick()')
             buildEventList(rawReservations)
-            $('#calendar').fullCalendar('render')
-            let view = $('#calendar').fullCalendar('getView')
-            console.log(view)
+            $('#calendar').fullCalendar('render')   // does not work
+            $('#calendar').fullCalendar('next')            
+            $('#calendar').fullCalendar('prev')            
+            // Time testing
+            let view = $('#calendar').fullCalendar('getView').start
+            let isoDateString = new Date(view._i).toISOString().split('.')[0]
+            console.log(isoDateString)
+            view = $('#calendar').fullCalendar('getView').end
+            isoDateString = new Date(view._i).toISOString().split('.')[0]
+            console.log(isoDateString)
+
             // let eventObjectArray = $('#calendar').fullCalendar( 'clientEvents' )   // [, idOrFilter ] ) 
             // $('#calendar').fullCalendar('updateEvents', eventObjectArray)
             // $('#kp-agenda-view').fullCalendar('render')
@@ -426,9 +442,10 @@ curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building/8
         $(document).ready(function () {
 
             // Request reservations
-            // getReservationsClick()
+            getResources()
 
             $("#getResources").click(getResourcesClick)
+            $("#getResources").hide()
 
             $("#get").click(getReservationsClick)
 
@@ -444,7 +461,7 @@ curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building/8
 
             schedulerLicenseKey: 'CC-Attribution-NonCommercial-NoDerivatives'
             var $calendar = $('#calendar')
-
+/*
             let res = [{
                     id: 'a',
                     title: 'Room A'
@@ -466,7 +483,6 @@ curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building/8
                 }
             ]
 
-            var event3 = {
                 "id": 3,
                 resourceId: 'b',
                 title: 'Lounas JEEEE',
@@ -474,7 +490,7 @@ curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building/8
                 end: '2017-11-08T12:00:00',
                 allDay: false, // will make the time show
             }
-
+*/
             $calendar.fullCalendar({
                 header: {
                     left: 'prev,next',
@@ -557,6 +573,7 @@ curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building/8
             if (currentBuildingId != selectedBuildingId) {
                 // Building has changes, thus cleanups
                 cleanRoomCodes()
+                cleanRoomSelector()
             }
             currentBuildingId   = selectedBuildingId       // *** GLOBAL
             currentBuildingName = selectedBuilingName     // *** GLOBAL
@@ -564,7 +581,7 @@ curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building/8
 
         }
 
-        function cleanBuildingSelector() {
+        function cleanRoomSelector() {
             var removeThis = $("#listOfRooms").find(".new").last().remove()
             while (removeThis.length > 0) {
                 removeThis = $("#listOfRooms").find(".new").last().remove()
@@ -589,7 +606,7 @@ curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building/8
                 let newItem = $("#listOfBuildings").find(".empty").last()
                 newItem[0].value = code
                 newItem[0].innerHTML = code
-                // newItem[0].className = "notempty"
+                newItem[0].className = "new"
             }
         }
         //--------------------------------------------------------------------------------
