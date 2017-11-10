@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Fetch Example</title>
+    <meta charset="UTF-8" />
+    <style media="screen"></style>
+    <script src='lib/jquery.min.js'></script>
+    <script src="lib/jquery-ui.min.js"></script>
+    <link rel='stylesheet' href='node_modules/fullcalendar/dist/fullcalendar.css' />
+    <script src='node_modules/moment/min/moment.min.js'></script>
+    <script src='node_modules/fullcalendar/dist/fullcalendar.js'></script>
+    <script>
+        // API address: https://opendata.tamk.fi/r1/reservation
+        const apiKey = "FvWXkyo1g5YwNmUir6YN";
+        // const URL = `https://opendata.tamk.fi/r1/computerstatus/computers/?apiKey=${apiKey}`;
+        const URL = `https://opendata.tamk.fi/r1/reservation/search?apiKey=${apiKey}`;
+        const buildingListURl = `https://opendata.tamk.fi/r1/reservation/building?apiKey=${apiKey}`
+        /*
+
+Buildings and Rooms
+
+To get started, all buildings can be listed with simple request to the API:
+
+curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building
+
+Then you can list all Rooms in the specific building:
+
+curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building/8
+
+        */
+
+        function buildRangeQueryByBuilding(_start, _end, _building, _room) {
+
+            var myHeaders = new Headers();
+            //myHeaders.append("Content-type", "application/json");
+            myHeaders.append("Content-type", "text/plain");
+            // at least start and end times
+            let searchWith = `{"rangeStart":"${_start}","rangeEnd":"${_end}"`
+            if (_building != undefined) {
+                searchWith += `,"building":["${_building}"]`
+            }
+            if (_room != undefined) {
+                searchWith += `,"room":["${_room}"]`
+            }
+            searchWith += `}`
+            var init = {
+                method: 'POST',
+                headers: myHeaders,
+                //body: `{"rangeStart":"2017-11-05T09:00","rangeEnd":"2017-11-06T10:00","building":["C-talo"]}`
+                body: searchWith
+            };
+            // if (_room != undefined) {
+            //    init.body = { "room" : "${_room}"
+            // }
+            return init;
+        };
+
+        // Hold remote data fetches (reservations) for further prosessing.
+        let rawReservations = []
+        let resources = []
+
+        function getRawReservations(_URL, _init, callback) {
+            fetch(_URL, _init).then(
+                (response) => {
+                    return response.json()
+                }).then(
+                (jsonObject) => {
+                    console.log("*** getRawReservations() jsonObject:", jsonObject)
+                    console.log(jsonObject.status)
+                    // console.log("jsonObject.msg:",jsonObject.msg)
+                    rawReservations = jsonObject.reservations
+                    console.log("--->>>rawReservations:", rawReservations[0])
+                    console.log("                 Size:", jsonObject.reservations.length)
+                    // $("#content").text(jsonObject.reservations[0].subject)
+                    callback()
+                }
+            )
+        }
+
+        function getRawResources(_URL, _init, callback) {
+            fetch(_URL, _init).then(
+                (response) => {
+                    return response.json()
+                }).then(
+                (jsonObject) => {
+                    console.log("*** getRawResources() jsonObject:", jsonObject)
+                    console.log(jsonObject.status)
+                    // console.log("jsonObject.msg:",jsonObject.msg)
+                    resources = jsonObject.resources
+                    console.log("--->>> Resources:", resources[0])
+                    console.log("            Size:", jsonObject.resources.length)
+                    // $("#content").text(jsonObject.resources[0].name)
+                    callback()
+                }
+            )
+        }
+
+        function getRawBuildingResources(_URL, _init, callback, _buildingId) {
+            fetch(_URL, _init).then(
+                (response) => {
+                    return response.json()
+                }).then(
+                (jsonObject) => {
+                    console.log("*** getRawBuildingResources() jsonObject:", jsonObject)
+                    console.log(jsonObject.status)
+                    // console.log("jsonObject.msg:",jsonObject.msg)
+                    rawBuildingResources = jsonObject.resources
+                    console.log("--->>> Raw Building Resources:", rawBuildingResources[0])
+                    console.log("                         Size:", jsonObject.resources.length)
+                    callback(_buildingId)
+                }
+            )
+        }
+
+        // Call this in the start and save codes.
+        function getResources() {
+            var myHeaders = new Headers();
+            //myHeaders.append("Content-type", "application/json");
+            myHeaders.append("Content-type", "text/plain");
+
+            var init = {
+                method: 'GET',
+                headers: myHeaders,
+            }
+            getRawResources(buildingListURl, init, createBuildingSelector) // ***
+        }
+
+        // Buffer for on building resources
+        var rawBuildingResources = []
+        //
+        function getBuildingResources(_buildingId) {
+
+            const buildingResourceBaseURL = `https://opendata.tamk.fi/r1/reservation/building`
+            let URL = `${buildingResourceBaseURL}/${_buildingId}?apiKey=${apiKey}`
+            var myHeaders = new Headers();
+            myHeaders.append("Content-type", "text/plain");
+            var init = {
+                method: 'GET',
+                headers: myHeaders,
+            }
+            console.log('*** getBuildingResources --->>> URL:', URL)
+            getRawBuildingResources(URL, init, buildRoomCodeList, _buildingId)
+
+
+        }
+
+        // List of all known rooms, indexing by [buildingId][roomId]
+        let roomList = []
+        // create and update room list 
+        /* 'room':        
+         "id":"1430",
+         "type":"room",
+         "code":"P0-01",
+         "name":"Atk-luokka, Terveys- ja sosiaalipalvelut",
+         "resourceType":"Atk-luokka Classroom with workstations",
+         "description":"",
+         "places":30,
+         "staff":0,
+         "students":0,
+         "size":0,
+         "organisationUnitId":0
+         */
+        // Brute force solution, thus us a lot of memory.
+        // ***>>>  Improve later
+        // Note: Here room might be a movable i.e. a car. *** Not filtered
+        function createRoomList(_buildingId) {
+            let room = []
+            console.log('*** createRoomList() --->>> rawBuildingResources', rawBuildingResources)
+            for (let i = 0; i < rawBuildingResources.length; i++) {
+                let roomId = rawBuildingResources[i].id
+                // console.log('----------------', i, roomId, rawBuildingResources[i])
+                room = rawBuildingResources[i]
+                room.buildingId = _buildingId    // add building id                
+                roomList[roomId] = room
+            }
+            console.log('--->>> roomList', roomList)
+        }
+        //-----------------------------------------------------------------------------
+        // Collection of all room id codes of the current building
+        let roomCodeList = []
+        //
+        function cleanRoomCodes() {
+            roomCodeList = []
+        }
+        //
+        function buildRoomCodeList(_buildingId) {
+            createRoomList(_buildingId)
+            for (let r = 0; r < roomList.length; r++) {
+                if ((roomList[r] != undefined) && (roomList[r].buildingId == _buildingId)) {
+                    let roomCode = roomList[r].code
+                    if (!roomCodeList.includes(roomCode)) {
+                        roomCodeList.push(roomCode)
+                    }
+                }
+            }
+            console.log('*** buildRoomCodeList() --->>>  roomCodeList:',  roomCodeList)
+            createRoomSelector()        
+            // console.log('buildingCodeList:', buildingCodeList)
+        }
+        /*
+        function buildRoomCodeList(_reservations) {
+            for (let r = 0; r < _reservations.length; r++) {
+                for (let m = 0; m < _reservations[r].resources.length; m++) {
+                    if ((_reservations[r].resources[m].type == "room")) {
+                        let roomCode = _reservations[r].resources[m].code
+                        if (!roomCodeList.includes(roomCode)) {
+                            roomCodeList.push(roomCode)
+                        }
+                    }
+                }
+            }
+            console.log('roomCodeList:', roomCodeList)
+            // console.log('buildingCodeList:', buildingCodeList)
+        }
+        */
+        //-----------------------------------------------------------------------------
+        // Collection of all buildings
+        let buildingCodeList = []
+        // Map of building codes to buildind id's.
+        let buildingCodeIdMap = []
+        //
+        function buildBuildingCodeList(_resources) {
+            for (let r = 0; r < _resources.length; r++) {
+                if (_resources[r].type == "building") {
+                    let buildindCode = _resources[r].code
+                    let buildingId = _resources[r].id
+                    buildingCodeIdMap[buildindCode] = buildingId
+                    if (!buildingCodeList.includes(buildindCode)) {
+                        buildingCodeList.push(buildindCode)
+                    }
+                }
+            }
+            console.log('*** buildBuildingCodeList()')
+            console.log('--->>>  buildingCodeList:', buildingCodeList)
+            console.log('--->>> buildingCodeIdMap:', buildingCodeIdMap)
+            // console.log('buildingCodeList[0]:', buildingCodeList[0])
+        }
+        //-----------------------------------------------------------------------------
+        // Collect all events to the eventList and returns the last event id == size.
+        // 
+        eventList = []
+        //
+        function buildEventList(_rawReservations, _startId) {
+            let eventId = 0
+            if ((_startId == undefined) || (_startId == 0)) {
+                // fresh start and prevent odd list
+                eventId = 1
+                eventList = []
+            } else {
+                eventId = _startId
+            }
+            for (let r = 0; r < _rawReservations.length; r++) {
+                let isRoom = false
+                let isReal = false
+                let roomCode = 0
+                let roomId = 0
+                let buildingId = 0
+                let buildingCode = 0
+                let buildingName = "No Name"
+                let subjectCode = "No Subject Code"
+                for (let m = 0; m < _rawReservations[r].resources.length; m++) {
+                    if ((_rawReservations[r].resources[m].type == "room")) {
+                        roomId = _rawReservations[r].resources[m].id
+                        roomCode = _rawReservations[r].resources[m].code
+                        buildingId = _rawReservations[r].resources[m].parent.id // ** check                        
+                        buildingCode = _rawReservations[r].resources[m].parent.code // ** check
+                        buildingName = _rawReservations[r].resources[m].parent.name
+                        isRoom = true
+                    }
+                    if ((_rawReservations[r].resources[m].type == "realization")) {
+                        subjectCode = _rawReservations[r].resources[m].code
+                        isReal = true
+                    }
+                }
+                if (isRoom && isReal) {
+                    isRoom = false
+                    isReal = false
+                    let startDate = _rawReservations[r].startDate
+                    let endDate = _rawReservations[r].endDate
+                    let subject = _rawReservations[r].subject
+                    let newEvent = {
+                        'id': eventId++,
+                        'title': subject,
+                        'allDay': false,
+                        'start': startDate,
+                        'end': endDate,
+                        // Next values are not used in fullcalendar
+                        'subjectCode': subjectCode,
+                        'roomId': roomId,
+                        'roomCode': roomCode,
+                        'buildingId': buildingId,
+                        'buildingCode': buildingCode, // check
+                        'buildingName': buildingName,
+                    }
+                    eventList.push(newEvent)
+                }
+
+            }
+            eventId-- // adjust to be the last id and the list size size
+            console.log('buildEventList() - eventList:', eventList, eventId, eventList.length)
+            return eventId
+        }
+
+        let currentBuildingId
+        let currentBuildingName
+        let currentRoomId
+        let currentRoomName
+        //-----------------------------------------------------------------------------
+        function getReservationsClick(event) {
+            // getReservations(URL);
+            // console.log(buildRangeQueryByBuilding());
+            let room = (currentRoomName == undefined) ? "C4-12" : currentRoomName
+            let building = (currentBuildingName == undefined) ? "C-talo" : currentBuildingName
+            $("#content").text("Cliks...")
+            getRawReservations(URL, 
+                            buildRangeQueryByBuilding("2017-11-06T08:00", "2017-11-11T17:00", building, room),
+                            showReservationsClick)
+
+            console.log('*** getReservationClick() --->>> URL:', URL)                            
+            let title = building + ' ' + room
+            console.log('*** getReservationsClick() --->>>', title)
+            $("#content").text(title)
+            // $('#calendar').fullCalendar('next');
+            // $('#calendar').fullCalendar('prev');
+
+        }
+        //-----------------------------------------------------------------------------
+        function showReservationsClick() {
+            // console.log('showReservationsClick - rawReservations.lenght', rawReservations.length)
+            buildRoomCodeList(rawReservations, currentBuildingId)
+            console.log('*** showReservationsClick - Room codes:', roomCodeList)
+            // 
+        }
+
+        //-----------------------------------------------------------------------------
+        function getResourcesClick() {
+            getResources()
+        }
+        //-----------------------------------------------------------------------------
+        function renderClick() {
+            console.log('*** renderClick()')
+            buildEventList(rawReservations)
+            $('#calendar').fullCalendar('render')
+            let view = $('#calendar').fullCalendar('getView')
+            console.log(view)
+            // let eventObjectArray = $('#calendar').fullCalendar( 'clientEvents' )   // [, idOrFilter ] ) 
+            // $('#calendar').fullCalendar('updateEvents', eventObjectArray)
+            // $('#kp-agenda-view').fullCalendar('render')
+        }
+        //-----------------------------------------------------------------------------
+        // Return a string with leading zero padding
+        function zeroStartFill(_str, _size) {
+            retStr = String(_str)
+            while (retStr.length < _size) {
+                retStr = '0' + retStr
+            }
+            return retStr
+        }
+        //-----------------------------------------------------------------------------
+        // Return current time in ISO-format 2017-11-06T08:00:00
+        function getDateString() {
+            var now = new Date()
+            now.setUTCHours(now.getHours()); // TC
+            let isoDateString = now.toISOString()
+            return (isoDateString.split('.')[0])
+        }
+        //-----------------------------------------------------------------------------        
+        // Return current time "YYYY-MM-DDTHH:MM:SS"-format.
+        // 2017-11-06T08:00:00
+        function getDateString_2() {
+            var now = new Date()
+            let monthStr = now.getMonth() + 1
+            monthStr = zeroStartFill(monthStr, 2)
+            let dayStr = zeroStartFill(now.getDate(), 2)
+            let dateStr = now.getFullYear() + "-" + monthStr + "-" + dayStr
+            let hoursStr = zeroStartFill(now.getHours(), 2)
+            let minutesStr = zeroStartFill(now.getMinutes(), 2)
+            let secondsStr = zeroStartFill(now.getSeconds(), 2)
+            let timeStr = hoursStr + ":" + minutesStr + ":" + secondsStr
+            let todayStr = dateStr + 'T' + timeStr
+            return todayStr
+        }
+
+        var globalEvents = [{
+                id: '1',
+                resourceId: 'a',
+                title: 'event1',
+                start: '2017-11-08T09:00:00',
+                end: '2017-11-08T13:00:00',
+                allDay: false,
+                body: 'Tajunnan virtaa',
+                // eventColor: 'orange',
+            },
+            {
+                id: '2',
+                resourceId: 'b',
+                title: 'Lounas',
+                start: '2017-11-09T11:30:00',
+                end: '2017-11-09T13:00:00',
+                allDay: false, // will make the time show
+            },
+            {
+                id: '3',
+                resourceId: 'c',
+                title: 'event3',
+                start: '2017-11-09T12:30:00',
+                end: '2017-11-09T16:00:00',
+                allDay: false, // will make the time show
+            },
+        ]
+
+        function getEvents(_start, _end, _timezone) {
+            console.log(_start, _end, _timezone)
+            // returns global events if available
+            if (eventList.length < 1) {
+                if (rawReservations.length > 0) {
+                    buildEventList(rawReservations)
+                }
+            }
+            return eventList
+        }
+
+        //-----------------------------------------------------------------------------
+        // Screen is ready
+        $(document).ready(function () {
+
+            // Request reservations
+            // getReservationsClick()
+
+            $("#getResources").click(getResourcesClick)
+
+            $("#get").click(getReservationsClick)
+
+            //            $("#showResources").click(showResourcesClick)
+
+            //            $("#createBuildingSelector").click(createBuildingSelector)
+
+            $("#render").click(renderClick)
+
+            console.log(getDateString_2())
+            console.log(getDateString())
+
+
+            schedulerLicenseKey: 'CC-Attribution-NonCommercial-NoDerivatives'
+            var $calendar = $('#calendar')
+
+            let res = [{
+                    id: 'a',
+                    title: 'Room A'
+                },
+                {
+                    id: 'b',
+                    title: 'Room B',
+                    eventColor: 'green'
+                },
+                {
+                    id: 'c',
+                    title: 'Room C',
+                    eventColor: 'orange'
+                },
+                {
+                    id: 'd',
+                    title: 'Room D',
+                    eventColor: 'red'
+                }
+            ]
+
+            var event3 = {
+                "id": 3,
+                resourceId: 'b',
+                title: 'Lounas JEEEE',
+                start: '2017-11-08T11:30:00',
+                end: '2017-11-08T12:00:00',
+                allDay: false, // will make the time show
+            }
+
+            $calendar.fullCalendar({
+                header: {
+                    left: 'prev,next',
+                    center: 'title',
+                    right: 'today,month,agendaWeek,agendaDay',
+                }, // buttons for switching between views
+                // put your options and callbacks here
+                weekends: false, // will hide Saturdays and Sundays
+                weekNumbers: true, // show week numbers
+                allDaySlot: false,
+                defaultView: 'agendaWeek', // default start view
+                timeFormat: 'H:mm', // uppercase H for 24-hour clock, (:mm) for leaving :00 out.
+                minTime: '08:00',
+                maxTime: '20:00',
+                /*
+                businessHours: true,
+                businessHours: {
+                    // days of week. an array of zero-based day of week integers (0=Sunday)
+                    dow: [1, 2, 3, 4, 5], // Monday - Friday
+                    start: '08:00', // a start time.
+                    end: '18:00', // an end time.
+                },
+                */
+                views: {
+                    month: { // name of view
+                        // titleFormat: 'YYYY.MM.DD'
+                        // other view-specific options here
+                    },
+                    agendaWeek: {
+                        titleFormat: 'DD.MM.YYYY',
+                        columnFormat: 'DD.MM',
+                    },
+                    day: {},
+                },
+                // resources: getRes(),
+                resources: [{
+                        id: 'a',
+                        title: 'Room A',
+                        eventColor: 'blue',
+                    },
+                    {
+                        id: 'b',
+                        title: 'Room B',
+                        eventColor: 'green',
+                    },
+                    {
+                        id: 'c',
+                        title: 'Room C',
+                        eventColor: 'orange',
+                    },
+                    {
+                        id: 'd',
+                        title: 'Room D',
+                        eventColor: 'red',
+                    },
+                ],
+                events: function (start, end, timezone, callback) {
+                    callback(getEvents(start, end, timezone))
+                },
+                dayClick: function () {
+                    // alert('Day has been clicked');
+                    console.log($calendar.fullCalendar) // .events[0] = event4
+                    console.log(document.buildingCodeList)
+                },
+                eventClick: function (event, element) { // *** More information dialog
+                    event.title = "HIT HIT!"
+                    // event.start = '2017-11-08T07:30:00'
+                    console.log(event)
+                    $('#calendar').fullCalendar('updateEvent', event);
+
+                },
+            });
+        });
+
+        //--------------------------------------------------------------------------------
+        function buildingSelected() {
+            var selectedBuilingName = document.getElementById("listOfBuildings").value
+            console.log('*** buildingSelected() --->>> ', selectedBuilingName)
+            let selectedBuildingId = buildingCodeIdMap[selectedBuilingName]
+            if (currentBuildingId != selectedBuildingId) {
+                // Building has changes, thus cleanups
+                cleanRoomCodes()
+            }
+            currentBuildingId   = selectedBuildingId       // *** GLOBAL
+            currentBuildingName = selectedBuilingName     // *** GLOBAL
+            getBuildingResources(selectedBuildingId)     // ***
+
+        }
+
+        function cleanBuildingSelector() {
+            var removeThis = $("#listOfRooms").find(".new").last().remove()
+            while (removeThis.length > 0) {
+                removeThis = $("#listOfRooms").find(".new").last().remove()
+            }
+        }
+        //
+        let buildingSelectorDone = false
+        //
+        function createBuildingSelector(event) {
+            if (buildingSelectorDone) {
+                console.log('*** createBuildingSelector() --->>> Building Selection is Done, return ***')
+                return
+            }
+            buildingSelectorDone = true
+            buildBuildingCodeList(resources)
+            let clone
+            for (let i = 0; i < buildingCodeList.length; i++) {
+                let code = buildingCodeList[i]
+                // console.log(code)
+                clone = $("#listOfBuildings").find(".empty").first().clone()
+                clone.appendTo($("#listOfBuildings"))
+                let newItem = $("#listOfBuildings").find(".empty").last()
+                newItem[0].value = code
+                newItem[0].innerHTML = code
+                // newItem[0].className = "notempty"
+            }
+        }
+        //--------------------------------------------------------------------------------
+        function roomSelected(event) {
+            var selectedRoomName = document.getElementById("listOfRooms").value
+            currentRoomName = selectedRoomName
+            console.log('*** roomSelected() --->>>', selectedRoomName)
+        }
+        //
+        let roomSelectorDone = false
+        //
+        function createRoomSelector(event) {
+            if (roomSelectorDone) {
+                console.log('** Cleaning building selector done ')                
+            }
+            roomSelectorDone = true
+            let clone
+            for (let i = 0; i < roomCodeList.length; i++) {
+                let code = roomCodeList[i]
+                // console.log(code)
+                clone = $("#listOfRooms").find(".empty").first().clone()
+                clone.appendTo($("#listOfRooms"))
+                let newItem = $("#listOfRooms").find(".empty").last();
+                newItem[0].value = code
+                newItem[0].innerHTML = code
+                newItem[0].className = "new"                
+            }
+        }
+        //--------------------------------------------------------------------------------
+    </script>
+</head>
+
+<body>
+
+    <select id="listOfBuildings" onchange="buildingSelected()">
+        <option class="empty" ,value="Empty">Select Building</option>
+    </select>
+
+    <select id="listOfRooms" onchange="roomSelected()">
+        <option class="empty" ,value="Empty">Select Room</option>
+    </select>
+
+    <button id="getResources">Get Resources</button>
+
+    <button id="get">Get Reservations</button>
+    
+    <button id="render">Render</button>
+
+    <div id=content style="fontsize: 16px">Sisältöä</div>
+
+    <div id='calendar'></div>
+
+</body>
+
+</html>
