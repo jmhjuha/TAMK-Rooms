@@ -2,17 +2,19 @@
 <html>
 
 <head>
-    <title>TAMK room reservation</title>
+    <title>TAMK rooms</title>
     <meta charset="UTF-8" />
     <style media="screen"></style>
     <style>
         .fc-toolbar.fc-header-toolbar {
-            margin-top: 0.5em;
+            // margin-top: 0.5em;
         }
-        .content {
-            box-sizing: border-box;
-            height: 1em;
-            float: right;
+        .contentBox {
+            //display: block;
+            //height: 30px;
+            //font-size: 10px;
+            //height: 1em;
+            //float: none;
         }
     </style>
     <script src='lib/jquery.min.js'></script>
@@ -262,6 +264,7 @@
                 }
                 if (isRoom) {
                     isRoom = false
+                    const reg = /[:][0]{2}$/
                     let startDate = _rawReservations[r].startDate
                     let endDate = _rawReservations[r].endDate
                     let subject = _rawReservations[r].subject
@@ -273,6 +276,8 @@
                         'end': endDate,
                         // Following values are not used in fullcalendar
                         'subjectCode': subjectCode,
+                        'simpleStartDate': startDate.split('T')[0],
+                        'simpleStartTime': startDate.split('T')[1].split(reg)[0],
                         'roomId': roomId,
                         'roomCode': roomCode,
                         'buildingId': buildingId,
@@ -302,7 +307,6 @@
                 title = 'Today:  ' + getDateStringShort()
             }
             $("#content").text(title)
-
         }
         //-----------------------------------------------------------------------------
         // Fetch only visible range from the server.
@@ -452,6 +456,7 @@
                 defaultView: 'agendaWeek', // Default start view is this week.
                 nowIndicator: true,
                 timeFormat: 'H:mm', // uUppercase H for 24-hour clock, (:mm) for leaving :00 out.
+                slotLabelFormat: 'H:mm',  // time column format 
                 minTime: '08:00',   // Calendar time view is not working as specified.
                 maxTime: '20:00',   // minTime and maxTime options found from Stack Ovewflow.
                 views: {
@@ -479,9 +484,13 @@
                     // $('#calendar').fullCalendar('updateEvent', event);   // if event is changed
                 },
                 eventMouseover: function (event, element) {
-                    setInfoLine(event.title)
+                    // console.log('------------>>> IN')
+                    let info = event.simpleStartDate + ' ' + event.simpleStartTime
+                    info += ` - ` + event.title
+                    setInfoLine(info)
                 },
                 eventMouseout: function (event, element) {
+                    // console.log('----------------->>>> OUT')
                     setInfoLine()
                 },
             });
@@ -594,8 +603,8 @@
             </select>
             <button id="get">Update</button>
         </div>
-        <div style="fontsize: 16px">
-            <p id=content></p>
+        <div id="contentBox" style="height:3em; font-size:1em">
+            <p id="content"></p>
         </div>
 
     </div>
