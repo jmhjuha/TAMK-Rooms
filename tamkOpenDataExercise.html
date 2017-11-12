@@ -2,34 +2,41 @@
 <html>
 
 <head>
-    <title>Fetch Example</title>
+    <title>TAMK room reservation</title>
     <meta charset="UTF-8" />
     <style media="screen"></style>
+    <style>
+        .fc-toolbar.fc-header-toolbar {
+            margin-top: 0.5em;
+        }
+        .content {
+            box-sizing: border-box;
+            height: 1em;
+            float: right;
+        }
+    </style>
     <script src='lib/jquery.min.js'></script>
     <script src="lib/jquery-ui.min.js"></script>
     <link rel='stylesheet' href='node_modules/fullcalendar/dist/fullcalendar.css' />
     <script src='node_modules/moment/min/moment.min.js'></script>
     <script src='node_modules/fullcalendar/dist/fullcalendar.js'></script>
-    <script>
 
+    <script>
         // API address: https://opendata.tamk.fi/r1/reservation
         let apiKey;
         apiKey = "FvWXkyo1g5YwNmUir6YN";
         //        
-        // const URL = `https://opendata.tamk.fi/r1/computerstatus/computers/?apiKey=${apiKey}`;
-        // const buildingListURl = `https://opendata.tamk.fi/r1/reservation/building?apiKey=${apiKey}`
-        //
-        // Buildings and Rooms
+        // * Buildings:
         // To get started, all buildings can be listed with simple request to the API:
         // curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building
-        //
+        // * Rooms:
         // Then you can list all Rooms in the specific building:
         // curl -u "<API key>:" https://opendata.tamk.fi/r1/reservation/building/8
 
-        
+
         //------------------------------------------------------------------------------------------
         //
-        function buildRangeQueryByBuilding(_start, _end, _building, _room) {
+        function buildRangeQueryByBuildingAndOrRoom(_start, _end, _building, _room) {
 
             var myHeaders = new Headers();
             //myHeaders.append("Content-type", "application/json");
@@ -49,9 +56,6 @@
                 //body: `{"rangeStart":"2017-11-05T09:00","rangeEnd":"2017-11-06T10:00","building":["C-talo"]}`
                 body: searchWith
             };
-            // if (_room != undefined) {
-            //    init.body = { "room" : "${_room}"
-            // }
             return init;
         };
         //------------------------------------------------------------------------------------------
@@ -95,6 +99,7 @@
             )
         }
         //------------------------------------------------------------------------------------------
+        // Fetch and save building information for callback().
         function getRawBuildingResources(_URL, _init, callback, _buildingId) {
             fetch(_URL, _init).then(
                 (response) => {
@@ -112,7 +117,7 @@
             )
         }
         //------------------------------------------------------------------------------------------
-        // Call this in the start and save codes.
+        // Call this in the start to get list of buildings.
         function getResources() {
             const buildingListURL = `https://opendata.tamk.fi/r1/reservation/building?apiKey=${apiKey}`
             var myHeaders = new Headers();
@@ -126,9 +131,9 @@
             getRawResources(buildingListURL, init, createBuildingSelector) // ***
         }
         //------------------------------------------------------------------------------------------
-        // Buffer for on building resources
+        // Buffer for on building resources.
         var rawBuildingResources = []
-        //
+        // Call this for one building resources.
         function getBuildingResources(_buildingId) {
 
             const buildingResourceBaseURL = `https://opendata.tamk.fi/r1/reservation/building`
@@ -236,12 +241,11 @@
             }
             for (let r = 0; r < _rawReservations.length; r++) {
                 let isRoom = false
-                let isReal = false
                 let roomCode = 0
                 let roomId = 0
                 let buildingId = 0
                 let buildingCode = 0
-                let buildingName = "No Name"
+                let buildingName = "No Building Name"
                 let subjectCode = "No Subject Code"
                 for (let m = 0; m < _rawReservations[r].resources.length; m++) {
                     if ((_rawReservations[r].resources[m].type == "room")) {
@@ -254,12 +258,10 @@
                     }
                     if ((_rawReservations[r].resources[m].type == "realization")) {
                         subjectCode = _rawReservations[r].resources[m].code
-                        isReal = true
                     }
                 }
-                if (isRoom && isReal) {
+                if (isRoom) {
                     isRoom = false
-                    isReal = false
                     let startDate = _rawReservations[r].startDate
                     let endDate = _rawReservations[r].endDate
                     let subject = _rawReservations[r].subject
@@ -269,7 +271,7 @@
                         'allDay': false,
                         'start': startDate,
                         'end': endDate,
-                        // Next values are not used in fullcalendar
+                        // Following values are not used in fullcalendar
                         'subjectCode': subjectCode,
                         'roomId': roomId,
                         'roomCode': roomCode,
@@ -292,6 +294,16 @@
         let currentBuildingName
         let currentRoomId
         let currentRoomName
+
+        //
+        function setInfoLine(_text) {
+            let title = _text
+            if (title == undefined) {
+                title = 'Today:  ' + getDateStringShort()
+            }
+            $("#content").text(title)
+
+        }
         //-----------------------------------------------------------------------------
         // Fetch only visible range from the server.
         //
@@ -308,17 +320,16 @@
             isoDateString = new Date(view._i).toISOString().split('.')[0]
             endDate = isoDateString
 
-            $("#content").text("Cliks...")
             getRawReservations(URL,
-                //              buildRangeQueryByBuilding("2017-11-06T08:00", "2017-11-11T17:00", building, room),
-                buildRangeQueryByBuilding(`${startDate}`, `${endDate}`, building, room),
+                //                      ("2017-11-06T08:00", "2017-11-11T17:00", building, room),
+                buildRangeQueryByBuildingAndOrRoom(`${startDate}`, `${endDate}`, building, room),
                 showReservationsClick)
 
             console.log('*** getReservationClick() --->>> URL:', URL)
-            let title = building + ' ' + room
+            let title = `Building: ${building}         Room: ${room}`
             console.log('*** getReservationsClick() --->>>', title)
-            $("#content").text(title)
-            setTimeout(renderClick, 200)
+            setInfoLine()
+            setTimeout(renderClick, 200) // *** Should use callback, fix if you have time.
             setTimeout(renderClick, 1000)
         }
         //-----------------------------------------------------------------------------
@@ -356,57 +367,30 @@
         }
         //-----------------------------------------------------------------------------
         // Return current time in ISO-format 2017-11-06T08:00:00
+        //                                  "YYYY-MM-DDTHH:MM:SS"-format.
         function getDateString() {
             var now = new Date()
-            now.setUTCHours(now.getHours()); // TC
+            now.setUTCHours(now.getHours()); // TC adjust
             let isoDateString = now.toISOString()
             return (isoDateString.split('.')[0])
         }
         //-----------------------------------------------------------------------------        
-        // Return current time "YYYY-MM-DDTHH:MM:SS"-format.
-        // 2017-11-06T08:00:00
-        function getDateString_2() {
+        // Return current time
+        // Adjusted from 2017-11-06T08:00:00 to 2017.11.06
+        function getDateStringShort() {
             var now = new Date()
             let monthStr = now.getMonth() + 1
             monthStr = zeroStartFill(monthStr, 2)
             let dayStr = zeroStartFill(now.getDate(), 2)
-            let dateStr = now.getFullYear() + "-" + monthStr + "-" + dayStr
-            let hoursStr = zeroStartFill(now.getHours(), 2)
-            let minutesStr = zeroStartFill(now.getMinutes(), 2)
-            let secondsStr = zeroStartFill(now.getSeconds(), 2)
-            let timeStr = hoursStr + ":" + minutesStr + ":" + secondsStr
-            let todayStr = dateStr + 'T' + timeStr
+            let dateStr = now.getFullYear() + "." + monthStr + "." + dayStr
+            // let hoursStr = zeroStartFill(now.getHours(), 2)
+            // let minutesStr = zeroStartFill(now.getMinutes(), 2)
+            // let secondsStr = "" // zeroStartFill(now.getSeconds(), 2)
+            // let timeStr = hoursStr + ":" + minutesStr + ":" + secondsStr
+            let todayStr = dateStr //+ 'T' + timeStr
             return todayStr
         }
-
-        var globalEvents = [{
-                id: '1',
-                resourceId: 'a',
-                title: 'event1',
-                start: '2017-11-08T09:00:00',
-                end: '2017-11-08T13:00:00',
-                allDay: false,
-                body: 'Tajunnan virtaa',
-                // eventColor: 'orange',
-            },
-            {
-                id: '2',
-                resourceId: 'b',
-                title: 'Lounas',
-                start: '2017-11-09T11:30:00',
-                end: '2017-11-09T13:00:00',
-                allDay: false, // will make the time show
-            },
-            {
-                id: '3',
-                resourceId: 'c',
-                title: 'event3',
-                start: '2017-11-09T12:30:00',
-                end: '2017-11-09T16:00:00',
-                allDay: false, // will make the time show
-            },
-        ]
-
+        //-----------------------------------------------------------------------------
         function getEvents(_start, _end, _timezone) {
             console.log(_start, _end, _timezone)
             // returns global events if available
@@ -417,22 +401,11 @@
             //}
             return eventList
         }
-        /*
-        function checkForInit() {
-            if ($(".fc-view").children().length) {
-                alert("initialized!");
-            } else {
-                setTimeout(function () {
-                    checkForInit();
-                }, 10);
-            }
-        }
-        */
-
+        //-----------------------------------------------------------------------------
         function getKey() {
-               var keyCode = prompt("Please, enter TAMP open data key code:", "..........");
-               console.log("Key code : " + keyCode);
-               return keyCode
+            var keyCode = prompt("Please, enter TAMP open data key code:", "..........");
+            console.log("Key code : " + keyCode);
+            return keyCode
         }
 
         //-----------------------------------------------------------------------------
@@ -442,7 +415,7 @@
             if (apiKey == undefined) {
                 apiKey = getKey()
             }
-            // Request reservations
+            // Request resources: buildings
             getResources()
 
             // checkForInit()
@@ -451,6 +424,7 @@
             $("#getResources").hide()
 
             $("#get").click(getReservationsClick)
+            $("#get").hide()
 
             //            $("#showResources").click(showResourcesClick)
 
@@ -459,9 +433,8 @@
             $("#render").click(renderClick)
             $("#render").hide()
 
-
-            console.log(getDateString_2())
-            console.log(getDateString())
+            console.log(getDateStringShort())
+            // console.log(getDateString())
 
             var $calendar = $('#calendar')
 
@@ -472,28 +445,18 @@
                     center: 'title',
                     right: 'today,month,agendaWeek,agendaDay',
                 }, // buttons for switching between views
-                // put your options and callbacks here
-                weekends: false, // will hide Saturdays and Sundays
-                weekNumbers: true, // show week numbers
+                // Options and callbacks below
+                weekends: false, // Hide Saturdays and Sundays.
+                weekNumbers: true, // Show week numbers.
                 allDaySlot: false,
-                defaultView: 'agendaWeek', // default start view
+                defaultView: 'agendaWeek', // Default start view is this week.
                 nowIndicator: true,
-                timeFormat: 'H:mm', // uppercase H for 24-hour clock, (:mm) for leaving :00 out.
-                minTime: '08:00',
-                maxTime: '20:00',
-                /*
-                businessHours: true,
-                businessHours: {
-                    // days of week. an array of zero-based day of week integers (0=Sunday)
-                    dow: [1, 2, 3, 4, 5], // Monday - Friday
-                    start: '08:00', // a start time.
-                    end: '18:00', // an end time.
-                },
-                */
+                timeFormat: 'H:mm', // uUppercase H for 24-hour clock, (:mm) for leaving :00 out.
+                minTime: '08:00',   // Calendar time view is not working as specified.
+                maxTime: '20:00',   // minTime and maxTime options found from Stack Ovewflow.
                 views: {
-                    month: { // name of view
+                    month: { // Month view-specific options
                         // titleFormat: 'YYYY.MM.DD'
-                        // other view-specific options here
                     },
                     agendaWeek: {
                         titleFormat: 'DD.MM.YYYY',
@@ -501,30 +464,6 @@
                     },
                     day: {},
                 },
-                // resources: getRes(),
-                /*
-                resources: [{
-                        id: 'a',
-                        title: 'Room A',
-                        eventColor: 'blue',
-                    },
-                    {
-                        id: 'b',
-                        title: 'Room B',
-                        eventColor: 'green',
-                    },
-                    {
-                        id: 'c',
-                        title: 'Room C',
-                        eventColor: 'orange',
-                    },
-                    {
-                        id: 'd',
-                        title: 'Room D',
-                        eventColor: 'red',
-                    },
-                ],
-                */
                 events: function (start, end, timezone, callback) {
                     callback(getEvents(start, end, timezone))
                 },
@@ -533,33 +472,35 @@
                     console.log('--- dayClick: f() ', $calendar.fullCalendar) // .events[0] = event4
                     console.log(document.buildingCodeList)
                 },
-                eventClick: function (event, element) { // *** More information dialog
-                    event.title = "HIT HIT!"
-                    // event.start = '2017-11-08T07:30:00'
+                eventClick: function (event, element) { // *** More information dialog. Do later.
+                    // event.title 
+                    // event.start ...
                     console.log(event)
-                    $('#calendar').fullCalendar('updateEvent', event);
-
+                    // $('#calendar').fullCalendar('updateEvent', event);   // if event is changed
+                },
+                eventMouseover: function (event, element) {
+                    setInfoLine(event.title)
+                },
+                eventMouseout: function (event, element) {
+                    setInfoLine()
                 },
             });
-
-            $('.fc-prev-button').click(function(){
-                getReservationsClick()
-            });
-             
-            $('.fc-next-button').click(function(){
+            $('.fc-prev-button').click(function () {
                 getReservationsClick()
             });
 
-            $('.fc-month-button').click(function(){
+            $('.fc-next-button').click(function () {
                 getReservationsClick()
             });
 
-            $('.fc-week-button').click(function(){
+            $('.fc-month-button').click(function () {
+                getReservationsClick()
+            });
+
+            $('.fc-week-button').click(function () {
                 getReservationsClick()
             });
         });
-        
-
 
         //--------------------------------------------------------------------------------
         function buildingSelected() {
@@ -622,10 +563,11 @@
                 console.log('** No need to create room selector.')
                 return
             }
-            roomSelectorReady = true  // logically should be lower, but...
+            roomSelectorReady = true // logically should be lower, but...
+            let rooms = roomCodeList.sort()
             let clone
-            for (let i = 0; i < roomCodeList.length; i++) {
-                let code = roomCodeList[i]
+            for (let i = 0; i < rooms.length; i++) {
+                let code = rooms[i]
                 // console.log(code)
                 clone = $("#listOfRooms").find(".empty").first().clone()
                 clone.appendTo($("#listOfRooms"))
@@ -641,25 +583,29 @@
 </head>
 
 <body>
+    <div>
+        <div>
+            <select id="listOfBuildings" onchange="buildingSelected()">
+                <option class="empty" ,value="Empty">Select Building</option>
+            </select>
 
-    <select id="listOfBuildings" onchange="buildingSelected()">
-        <option class="empty" ,value="Empty">Select Building</option>
-    </select>
+            <select id="listOfRooms" onchange="roomSelected()">
+                <option class="empty" ,value="Empty">Select Room</option>
+            </select>
+            <button id="get">Update</button>
+        </div>
+        <div style="fontsize: 16px">
+            <p id=content></p>
+        </div>
 
-    <select id="listOfRooms" onchange="roomSelected()">
-        <option class="empty" ,value="Empty">Select Room</option>
-    </select>
-
-    <button id="getResources">Get Resources</button>
-
-    <button id="get">Update</button>
-
-    <button id="render">Render</button>
-
-    <div id='calendar'></div>
-
-    <div id=content style="fontsize: 16px">Sisältöä</div>
-
+    </div>
+    <div>
+        <button id="getResources">Get Resources</button>
+        <button id="render">Render</button>
+    </div>
+    <div>
+        <div id='calendar'></div>
+    </div>
 </body>
 
 </html>
